@@ -1,0 +1,1 @@
+GEN_CSRCS += _dislike_alpha_100x100.c _fist_alpha_100x100.c _like_alpha_100x100.c _peace_alpha_100x100.c _stop_alpha_100x100.c _vut_fit_logo_alpha_337x138.c _nxp_alpha_295x135.c
