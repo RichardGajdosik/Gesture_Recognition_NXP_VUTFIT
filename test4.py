@@ -1,5 +1,7 @@
 import gi
 import os
+import numpy as np
+import cv2  # Import OpenCV for image processing
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gst', '1.0')
@@ -17,26 +19,52 @@ class VideoPlayer(Gtk.Window):
         self.create_ui()
 
         # Create GStreamer pipeline
-        self.pipeline = Gst.ElementFactory.make("playbin", "player")
-        video_uri = 'file:///home/default/Gesture_Recognition_NXP_VUTFIT/src/video_test.mp4'
-        self.pipeline.set_property("uri", video_uri)
+        self.pipeline = Gst.Pipeline()
+        self.source = Gst.ElementFactory.make("filesrc", "source")
+        self.source.set_property("location", "/home/default/Gesture_Recognition_NXP_VUTFIT/src/video_test.mp4")
+        self.decodebin = Gst.ElementFactory.make("decodebin", "decoder")
 
-        # Set up a Gtk video sink
-        self.gtksink = Gst.ElementFactory.make("gtksink", None)
-        if not self.gtksink:
-            print("Failed to create gtksink. Trying glimagesink.")
-            self.gtksink = Gst.ElementFactory.make("glimagesink", None)
+        self.source.link(self.decodebin)
 
-        self.pipeline.set_property("video-sink", self.gtksink)
+        self.decodebin.connect("pad-added", self.on_pad_added)
 
-        # Embed video in the UI
-        self.video_area.add(self.gtksink.props.widget)
+        self.appsink = Gst.ElementFactory.make("appsink", "sink")
+        self.appsink.set_property("emit-signals", True)
+        self.appsink.connect("new-sample", self.on_new_sample, self.appsink)
+
+        self.pipeline.add(self.source)
+        self.pipeline.add(self.appsink)
 
         # Connect to the bus
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect("message::eos", self.on_eos)
         bus.connect("message::error", self.on_error)
+
+    def on_pad_added(self, element, pad):
+        caps = pad.get_current_caps()
+        structure_name = caps.to_string()
+        if structure_name.startswith("video/"):
+            pad.link(self.appsink.get_static_pad("sink"))
+
+    def on_new_sample(self, appsink, data):
+        sample = appsink.emit("pull-sample")
+        if sample:
+            buffer = sample.get_buffer()
+            success, map_info = buffer.map(Gst.MapFlags.READ)
+            if success:
+                frame = np.ndarray(
+                    shape=(map_info.size // (1920 * 3), 1920, 3),
+                    dtype=np.uint8,
+                    buffer=map_info.data)
+                # Process frame with your inference engine here
+                # For example, converting to grayscale using OpenCV
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                print("Processing frame...")
+
+            buffer.unmap(map_info)
+            return Gst.FlowReturn.OK
+        return Gst.FlowReturn.ERROR
 
     def create_ui(self):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -51,26 +79,7 @@ class VideoPlayer(Gtk.Window):
         self.button_inference.connect("clicked", self.on_inference_clicked)
         vbox.pack_start(self.button_inference, False, True, 0)
 
-        # Thumbnails of recognized gestures
-        thumbnails_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        thumbnails_box.set_homogeneous(True)  # Same space for every image
-        vbox.pack_start(thumbnails_box, True, True, 0)
-
-        # Add images from directory
-        image_directory = "src/recognized_gestures"
-        for image_path in sorted(os.listdir(image_directory)):
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                filename=os.path.join(image_directory, image_path),
-                width=100,
-                height=100,
-                preserve_aspect_ratio=True)
-            image = Gtk.Image.new_from_pixbuf(pixbuf)
-            frame = Gtk.Frame()
-            frame.add(image)
-            thumbnails_box.pack_start(frame, False, False, 0)
-
     def on_eos(self, bus, msg):
-        # End of stream, restart the video
         self.pipeline.set_state(Gst.State.READY)
         self.pipeline.set_state(Gst.State.PLAYING)
 

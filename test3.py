@@ -1,10 +1,8 @@
 import gi
-import os
-
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gst', '1.0')
 gi.require_version('GstVideo', '1.0')
-from gi.repository import Gtk, GdkPixbuf, Gst, GstVideo
+from gi.repository import Gtk, Gst, GstVideo
 
 class VideoPlayer(Gtk.Window):
     def __init__(self):
@@ -42,32 +40,14 @@ class VideoPlayer(Gtk.Window):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.add(vbox)
 
-        # Create a Box for video output
+        # Create a DrawingArea for video output
         self.video_area = Gtk.Box()
         vbox.pack_start(self.video_area, True, True, 0)
 
-        # Create a Button for Inference
-        self.button_inference = Gtk.Button(label="Start Inference")
-        self.button_inference.connect("clicked", self.on_inference_clicked)
-        vbox.pack_start(self.button_inference, False, True, 0)
-
-        # Thumbnails of recognized gestures
-        thumbnails_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        thumbnails_box.set_homogeneous(True)  # Same space for every image
-        vbox.pack_start(thumbnails_box, True, True, 0)
-
-        # Add images from directory
-        image_directory = "src/recognized_gestures"
-        for image_path in sorted(os.listdir(image_directory)):
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                filename=os.path.join(image_directory, image_path),
-                width=100,
-                height=100,
-                preserve_aspect_ratio=True)
-            image = Gtk.Image.new_from_pixbuf(pixbuf)
-            frame = Gtk.Frame()
-            frame.add(image)
-            thumbnails_box.pack_start(frame, False, False, 0)
+        # Create a Button for Play/Pause
+        self.button = Gtk.Button(label="Pause")
+        self.button.connect("clicked", self.toggle_playback)
+        vbox.pack_start(self.button, False, True, 0)
 
     def on_eos(self, bus, msg):
         # End of stream, restart the video
@@ -78,8 +58,13 @@ class VideoPlayer(Gtk.Window):
         err, debug = msg.parse_error()
         print(f"Error: {err}, {debug}")
 
-    def on_inference_clicked(self, button):
-        print("Inference started")
+    def toggle_playback(self, button):
+        if self.button.get_label() == "Pause":
+            self.pipeline.set_state(Gst.State.PAUSED)
+            self.button.set_label("Play")
+        else:
+            self.pipeline.set_state(Gst.State.PLAYING)
+            self.button.set_label("Pause")
 
     def run(self):
         # Start the video
