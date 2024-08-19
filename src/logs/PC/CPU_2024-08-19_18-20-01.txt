@@ -1,0 +1,7 @@
+Time: 2024-08-19_18-20-01
+The name of the model: models/model_float32epoch20_mobilnetv2_100_per_gesture.tflite
+Avg. Cycle Time: 0.00722161s
+Avg. Preprocess Time: 0.00019669s
+Avg. Inference Time: 0.00496436s
+Avg. Memory Usage: 2288.1714621256606 MB
+Avg. Accuracy: 73.01%
