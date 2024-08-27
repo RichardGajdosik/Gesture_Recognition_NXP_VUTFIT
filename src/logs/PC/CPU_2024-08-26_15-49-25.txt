@@ -1,0 +1,7 @@
+Time: 2024-08-26_15-49-25
+The name of the model: models/model_uint8epoch20_edl2_100_per_gesture.tflite
+Avg. Cycle Time: 0.04481324s
+Avg. Preprocess Time: 0.00161179s
+Avg. Inference Time: 0.03466793s
+Avg. Memory Usage: -1.0 MB
+Avg. Accuracy: 1.49%

@@ -1,11 +1,11 @@
 import gi
-import numpy as np
-import cv2
-gi.require_version('Gtk', '3.0')
+
+# Ensure that the correct versions of the libraries are used
 gi.require_version('Gst', '1.0')
 gi.require_version('GstVideo', '1.0')
-from gi.repository import Gtk, Gst
+gi.require_version('Gtk', '3.0')
 
+from gi.repository import Gtk, Gst
 
 class VideoPlayer(Gtk.Window):
     def __init__(self):
@@ -29,27 +29,23 @@ class VideoPlayer(Gtk.Window):
         # Create the video converter element
         self.videoconvert = Gst.ElementFactory.make("videoconvert", "videoconvert")
         
-        # Create an appsink element to capture frames
-        self.appsink = Gst.ElementFactory.make("appsink", "appsink")
-        self.appsink.set_property("emit-signals", True)
-        self.appsink.set_property("max-buffers", 1)
-        self.appsink.set_property("drop", True)
-        self.appsink.set_property("caps", Gst.Caps.from_string("video/x-raw,format=BGR"))
-        self.appsink.connect("new-sample", self.on_new_sample)
-
-        # Create a video sink element to display the video
-        self.videosink = Gst.ElementFactory.make("autovideosink", "videosink")
+        # Create a sink element that integrates with GTK
+        self.gtksink = Gst.ElementFactory.make("gtksink", "gtksink")
+        if not self.gtksink:
+            print("Failed to create gtksink.")
+            return
 
         # Add elements to the pipeline
         self.pipeline.add(self.source)
         self.pipeline.add(self.videoconvert)
-        self.pipeline.add(self.appsink)
-        self.pipeline.add(self.videosink)
+        self.pipeline.add(self.gtksink)
 
         # Link the elements in the pipeline
         self.source.link(self.videoconvert)
-        self.videoconvert.link(self.appsink)
-        self.videoconvert.link(self.videosink)
+        self.videoconvert.link(self.gtksink)
+
+        # Embed video in the UI
+        self.video_area.add(self.gtksink.props.widget)
 
         # Connect to the bus
         bus = self.pipeline.get_bus()
@@ -90,45 +86,6 @@ class VideoPlayer(Gtk.Window):
         else:
             self.button_inference.set_label("Start Inference")
             print("Inference stopped")
-
-    def on_new_sample(self, sink):
-        if not self.inference_active:
-            return Gst.FlowReturn.OK
-
-        sample = sink.emit("pull-sample")
-        buf = sample.get_buffer()
-        caps = sample.get_caps()
-        arr = self.gst_buffer_to_numpy(buf, caps)
-
-        # Perform inference on the frame (dummy inference here)
-        inference_result = self.dummy_inference(arr)
-
-        # Display the result (just printing here)
-        print(f"Inference Result: {inference_result}")
-
-        return Gst.FlowReturn.OK
-
-    def gst_buffer_to_numpy(self, buf, caps):
-        # Convert GStreamer buffer to numpy array
-        success, map_info = buf.map(Gst.MapFlags.READ)
-        if not success:
-            return None
-
-        # Determine the shape from the caps
-        structure = caps.get_structure(0)
-        width = structure.get_value('width')
-        height = structure.get_value('height')
-        arr = np.frombuffer(map_info.data, dtype=np.uint8)
-        arr = arr.reshape((height, width, 3))
-
-        buf.unmap(map_info)
-        return arr
-
-    def dummy_inference(self, frame):
-        # This is where your inference logic would go
-        # For demonstration, let's just calculate the mean color value
-        mean_color = frame.mean(axis=(0, 1))
-        return mean_color
 
     def run(self):
         # Start the video
