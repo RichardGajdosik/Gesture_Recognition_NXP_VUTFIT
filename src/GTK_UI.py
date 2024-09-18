@@ -20,9 +20,9 @@ class VideoPlayer(Gtk.Window):
         self.target = target
         self.model_path = model_path
 
+        self.load_model()
         self.init_ui()
         self.init_video_capture()
-        self.load_model()
         self.show_all()
         self.inference_enabled = False
 
@@ -34,6 +34,19 @@ class VideoPlayer(Gtk.Window):
         self.drawing_area.connect("draw", self.on_draw)
         self.vbox.pack_start(self.drawing_area, expand=True, fill=True, padding=0)
 
+        self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.vbox.pack_start(self.gestures_box, expand=False, fill=True, padding=0)
+
+        self.gesture_images_widgets = {}
+        for class_name in self.class_names:
+            if class_name in self.gesture_images:
+                image_widget = Gtk.Image.new_from_pixbuf(self.gesture_images[class_name])
+                self.gestures_box.pack_start(image_widget, expand=False, fill=True, padding=5)
+                self.gesture_images_widgets[class_name] = image_widget
+
+        self.dynamic_gesture_image = Gtk.Image()
+        self.gestures_box.pack_start(self.dynamic_gesture_image, expand=False, fill=True, padding=5)
+
         self.button_inference = Gtk.Button(label="Start Inference")
         self.button_inference.connect("clicked", self.on_inference_clicked)
         self.vbox.pack_start(self.button_inference, expand=False, fill=True, padding=0)
@@ -42,7 +55,7 @@ class VideoPlayer(Gtk.Window):
         self.capture = cv2.VideoCapture(0)
         #self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 224)  # Set the width
         #self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 224)  # Set the height
-        GLib.timeout_add(120, self.update_frame)  # Timeout in milliseconds to refresh frame
+        GLib.timeout_add(60, self.update_frame)  # Timeout in milliseconds to refresh frame
 
     def load_model(self):
         # Load the tflite model and libraries
@@ -94,6 +107,7 @@ class VideoPlayer(Gtk.Window):
         self.input_dtype = self.input_details[0]['dtype']
 
         # Initialize variables for inference
+        self.previous_avg_gesture = None
         self.cycle_times = []
         self.preprocess_times = []
         self.inference_times = []
@@ -120,10 +134,9 @@ class VideoPlayer(Gtk.Window):
         images = {}
         for name in class_names:
             image_path = f'recognized_gestures/{name}.jpg'
-            image = cv2.imread(image_path)
-            if image is not None:
-                resized_image = cv2.resize(image, (150, 150))
-                images[name] = resized_image
+            if os.path.exists(image_path):
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(image_path, width=150, height=150, preserve_aspect_ratio=True)
+                images[name] = pixbuf
         return images
 
     def preprocess_frame(self, frame):
@@ -195,15 +208,21 @@ class VideoPlayer(Gtk.Window):
         # New avg found
         if len(self.last_predictions) == self.last_predictions.maxlen:
             self.avg_gesture = max(set(self.last_predictions), key=self.last_predictions.count)
-            avg_predicted_gesture_image = self.gesture_images.get(self.predicted_class_name, None)
             self.model_accuracies.append(probabilities[predicted_class_index])
-            #if avg_predicted_gesture_image is not None:
-                #cv2.rectangle(avg_predicted_gesture_image, (10, 145), (90, 120), (0, 0, 0), -1)
-                #cv2.putText(avg_predicted_gesture_image, f"{probabilities[predicted_class_index]:.2f}%", (10, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
-                # Display the predicted gesture image in a separate window (optional)
-                # cv2.imshow('Predicted Gesture Avg', avg_predicted_gesture_image)
-                # if cv2.waitKey(1) & 0xFF == ord('q'):
-                #     self.on_close()
+
+            # Check if the average gesture has changed
+            if self.avg_gesture != self.previous_avg_gesture:
+                self.previous_avg_gesture = self.avg_gesture
+
+                # Update GUI elements
+                # Update dynamic gesture image
+                if self.avg_gesture in self.gesture_images:
+                    self.dynamic_gesture_image.set_from_pixbuf(self.gesture_images[self.avg_gesture])
+                    #GLib.idle_add(self.dynamic_gesture_image.set_from_pixbuf, self.gesture_images[self.predicted_class_name])
+                else:
+                    # If gesture image is not available, clear the dynamic gesture image
+                    self.dynamic_gesture_image.clear()
+                    #GLib.idle_add(self.dynamic_gesture_image.clear)
 
         cycle_time = time.time() - start_cycle_time
         # Store cycle time
