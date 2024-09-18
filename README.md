@@ -1,14 +1,14 @@
 # Bachelor's thesis on implementing gesture recognition on ARM devices
 <p align="middle">
-<img title="NXP" alt="" src="doc/2560px-NXP-Logo.svg.png" width="200">
-<img title="VUT FIT" alt="" src="doc/vut_fit_logo.png"width="200">
+<img title="NXP" alt="" src="readme_images/2560px-NXP-Logo.svg.png" width="200">
+<img title="VUT FIT" alt="" src="readme_images/vut_fit_logo.png"width="200">
 </p>
 
 ### Author: Richard Gajdošík with help from NXP and VUT FIT
 
 This project shows how to train image classification on top of MobilNetV2 model and implements real-time gesture recognition on an ARM-based i.MX 93 device or on x64 device using TensorFlow Lite while also providing already trained and converted tflite file for immediate inferencing.
 
-<img title="Me gesturing" alt="" src="doc/me_gesturing.png">
+<img title="Me gesturing" alt="" src="readme_images/me_gesturing.png">
 
 ## Requirements
 
