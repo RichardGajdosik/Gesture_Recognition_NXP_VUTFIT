@@ -11,11 +11,11 @@ import cairo
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('GdkPixbuf', '2.0')
-from gi.repository import Gtk, GdkPixbuf, GLib, Gdk
+from gi.repository import Gtk, GdkPixbuf, GLib, Gdk, Gio, Pango
 
 class VideoPlayer(Gtk.Window):
     def __init__(self, target='CPU', model_path='models/model_float32epoch20_mobilnetv2_100_per_gesture.tflite'):
-        super(VideoPlayer, self).__init__(title="GTK Video Stream")
+        super(VideoPlayer, self).__init__()
         self.set_default_size(1024, 768)
         self.target = target
         self.model_path = model_path
@@ -27,34 +27,101 @@ class VideoPlayer(Gtk.Window):
         self.inference_enabled = False
 
     def init_ui(self):
-        self.vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.add(self.vbox)
+        # Create a Header Bar
+        header_bar = Gtk.HeaderBar(title="Gesture Recognition")
+        header_bar.set_subtitle("Using TensorFlow Lite")
+        header_bar.props.show_close_button = True
+        self.set_titlebar(header_bar)
 
+        # Start/Stop Inference Button in Header Bar
+        self.button_inference = Gtk.Button(label="Start Inference")
+        self.button_inference.connect("clicked", self.on_inference_clicked)
+        header_bar.pack_end(self.button_inference)
+
+        # Main Layout Grid
+        self.grid = Gtk.Grid()
+        self.grid.set_column_spacing(10)
+        self.grid.set_row_spacing(10)
+        self.grid.set_margin_top(10)
+        self.grid.set_margin_bottom(10)
+        self.grid.set_margin_left(10)
+        self.grid.set_margin_right(10)
+        self.add(self.grid)
+
+        # Drawing Area for Video
         self.drawing_area = Gtk.DrawingArea()
+        self.drawing_area.set_size_request(640, 480)
         self.drawing_area.connect("draw", self.on_draw)
-        self.vbox.pack_start(self.drawing_area, expand=True, fill=True, padding=0)
+        self.grid.attach(self.drawing_area, 0, 0, 2, 1)
 
-        self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        self.vbox.pack_start(self.gestures_box, expand=False, fill=True, padding=0)
+        # Gesture Images Box
+        self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.grid.attach(self.gestures_box, 0, 1, 1, 1)
 
         self.gesture_images_widgets = {}
         for class_name in self.class_names:
             if class_name in self.gesture_images:
                 image_widget = Gtk.Image.new_from_pixbuf(self.gesture_images[class_name])
-                self.gestures_box.pack_start(image_widget, expand=False, fill=True, padding=5)
+                frame = Gtk.Frame()
+                frame.set_shadow_type(Gtk.ShadowType.IN)
+                frame.add(image_widget)
+                self.gestures_box.pack_start(frame, expand=False, fill=False, padding=5)
                 self.gesture_images_widgets[class_name] = image_widget
 
+        # Dynamic Gesture Image
+        self.dynamic_gesture_frame = Gtk.Frame(label="Recognized Gesture")
+        self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
+        self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
         self.dynamic_gesture_image = Gtk.Image()
-        self.gestures_box.pack_start(self.dynamic_gesture_image, expand=False, fill=True, padding=5)
+        self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
+        self.grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
 
-        self.button_inference = Gtk.Button(label="Start Inference")
-        self.button_inference.connect("clicked", self.on_inference_clicked)
-        self.vbox.pack_start(self.button_inference, expand=False, fill=True, padding=0)
+        # Apply CSS Styling
+        self.apply_css()
+
+    def apply_css(self):
+        css = """
+        window {
+            background-color: #2E3440;
+        }
+        headerbar {
+            background-color: #3B4252;
+            color: #ECEFF4;
+        }
+        headerbar .title {
+            color: #ECEFF4;
+            font-weight: bold;
+        }
+        headerbar .subtitle {
+            color: #D8DEE9;
+        }
+        button {
+            background-color: #5E81AC;
+            color: #ECEFF4;
+            border-radius: 5px;
+        }
+        frame {
+            background-color: #4C566A;
+            color: #ECEFF4;
+            border-radius: 5px;
+        }
+        label {
+            color: #ECEFF4;
+            font-size: 14px;
+        }
+        """
+
+        style_provider = Gtk.CssProvider()
+        style_provider.load_from_data(css.encode())
+
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            style_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
 
     def init_video_capture(self):
         self.capture = cv2.VideoCapture(0)
-        #self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 224)  # Set the width
-        #self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 224)  # Set the height
         GLib.timeout_add(60, self.update_frame)  # Timeout in milliseconds to refresh frame
 
     def load_model(self):
@@ -93,7 +160,7 @@ class VideoPlayer(Gtk.Window):
         elif platformType == 'x86':
             import tensorflow as tf
             self.interpreter = tf.lite.Interpreter(model_path=self.model_path)
-        else: 
+        else:
             print('Error: Passed wrong platform type. Please set platform type to arm or x86')
             exit()
 
@@ -135,26 +202,27 @@ class VideoPlayer(Gtk.Window):
         for name in class_names:
             image_path = f'recognized_gestures/{name}.jpg'
             if os.path.exists(image_path):
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(image_path, width=150, height=150, preserve_aspect_ratio=True)
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(image_path, width=100, height=100, preserve_aspect_ratio=True)
                 images[name] = pixbuf
         return images
 
     def preprocess_frame(self, frame):
         # Input shape should be (height, width), for example (224, 224)
+
         target_height, target_width = self.input_shape[:2]
-        
+
         # Determine the minimum dimension of the frame and crop it to a square
         min_dim = min(frame.shape[:2])
         start_x = (frame.shape[1] - min_dim) // 2
         start_y = (frame.shape[0] - min_dim) // 2
         cropped_frame = frame[start_y:start_y+min_dim, start_x:start_x+min_dim]
-        
+
         # Resize the cropped frame to the target size expected by the model
         resized_frame = cv2.resize(cropped_frame, (target_width, target_height))
-        
+
         # Normalize the resized frame (assuming the model expects values between 0 and 1)
         normalized_frame = resized_frame / 255.0
-        
+
         # Expand dimensions to match the model's input shape and convert to the expected dtype
         return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), cv2.flip(resized_frame, 1)
 
@@ -217,12 +285,10 @@ class VideoPlayer(Gtk.Window):
                 # Update GUI elements
                 # Update dynamic gesture image
                 if self.avg_gesture in self.gesture_images:
-                    self.dynamic_gesture_image.set_from_pixbuf(self.gesture_images[self.avg_gesture])
-                    #GLib.idle_add(self.dynamic_gesture_image.set_from_pixbuf, self.gesture_images[self.predicted_class_name])
+                    GLib.idle_add(self.dynamic_gesture_image.set_from_pixbuf, self.gesture_images[self.avg_gesture])
                 else:
                     # If gesture image is not available, clear the dynamic gesture image
-                    self.dynamic_gesture_image.clear()
-                    #GLib.idle_add(self.dynamic_gesture_image.clear)
+                    GLib.idle_add(self.dynamic_gesture_image.clear)
 
         cycle_time = time.time() - start_cycle_time
         # Store cycle time
@@ -232,41 +298,41 @@ class VideoPlayer(Gtk.Window):
         cv2.putText(display_frame, f"Predicted: {self.predicted_class_name}", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1)
         # Convert display_frame to RGB
         self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-    
+
     def on_draw(self, widget, cr):
         if hasattr(self, 'current_frame'):
             # Get the size of the drawing area
             allocation = self.drawing_area.get_allocation()
             area_width = allocation.width
             area_height = allocation.height
-    
+
             # Get the dimensions of the current frame
             frame_height, frame_width, _ = self.current_frame.shape
-    
+
             # Calculate scaling factors to maintain aspect ratio
             scale = min(area_width / frame_width, area_height / frame_height)
             new_width = int(frame_width * scale)
             new_height = int(frame_height * scale)
-    
+
             # Resize the frame to fit the drawing area
             resized_frame = cv2.resize(self.current_frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-    
+
             # Convert the resized frame to a pixbuf
             pixbuf = self.gdk_pixbuf_from_frame(resized_frame)
-    
+
             # Calculate position to center the image
             x = (area_width - new_width) // 2
             y = (area_height - new_height) // 2
-    
+
             # Draw the pixbuf at the calculated position
             Gdk.cairo_set_source_pixbuf(cr, pixbuf, x, y)
             cr.paint()
         return False
-    
+
     def gdk_pixbuf_from_frame(self, frame):
         h, w, c = frame.shape
         return GdkPixbuf.Pixbuf.new_from_data(
-            frame.flatten(),  # Pixel data
+            frame.tobytes(),  # Pixel data
             GdkPixbuf.Colorspace.RGB,
             False,            # No alpha
             8,                # Bits per channel
@@ -287,14 +353,14 @@ class VideoPlayer(Gtk.Window):
         current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_filename = f"logs/{self.platform}/{self.target}_{time.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-        
+
         # Calculate averages
         average_cycle_time = sum(self.cycle_times) / len(self.cycle_times) if self.cycle_times else 0
         average_preprocess_time = sum(self.preprocess_times) / len(self.preprocess_times) if self.preprocess_times else 0
         average_inference_time = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
         average_memory_usage = sum(self.memory_usages) / len(self.memory_usages) if self.memory_usages else 0
         average_accuracy = sum(self.model_accuracies) / len(self.model_accuracies) if self.model_accuracies else 0
-        
+
         # Write to log
         with open(log_filename, 'w') as log_file:
             log_entry = (
