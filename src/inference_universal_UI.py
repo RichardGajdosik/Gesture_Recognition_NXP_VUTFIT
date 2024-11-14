@@ -28,10 +28,16 @@ class VideoPlayer(Gtk.Window):
 
     def init_ui(self):
         # Create a Header Bar
-        header_bar = Gtk.HeaderBar(title="Gesture Recognition")
-        header_bar.set_subtitle("Using TensorFlow Lite")
-        header_bar.props.show_close_button = True
+        header_bar = Gtk.HeaderBar()
+        header_bar.set_show_close_button(True)
         self.set_titlebar(header_bar)
+
+        # Add NXP Logo to Header Bar
+        logo_path = "../readme_images/2560px-NXP-Logo.svg.png"  # Path to the NXP logo image
+        if os.path.exists(logo_path):
+            logo_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(logo_path, width=150, height=50, preserve_aspect_ratio=True)
+            logo_image = Gtk.Image.new_from_pixbuf(logo_pixbuf)
+            header_bar.pack_start(logo_image)
 
         # Start/Stop Inference Button in Header Bar
         self.button_inference = Gtk.Button(label="Start Inference")
@@ -76,39 +82,39 @@ class VideoPlayer(Gtk.Window):
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
         self.grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
 
-        # Apply CSS Styling
+        # Apply CSS Styling with NXP Colors
         self.apply_css()
 
     def apply_css(self):
-        css = """
-        window {
-            background-color: #2E3440;
-        }
-        headerbar {
-            background-color: #3B4252;
-            color: #ECEFF4;
-        }
-        headerbar .title {
-            color: #ECEFF4;
+        # NXP Official Colors
+        nxp_orange = "#FF8200"
+        nxp_green = "#8DC63F"
+        nxp_blue = "#00ADEF"
+        nxp_gray = "#4D4D4F"
+        nxp_light_gray = "#A7A8AA"
+
+        css = f"""
+        window {{
+            background-color: {nxp_blue};
+        }}
+        headerbar {{
+            background-color: {nxp_gray};
+        }}
+        button {{
+            background-color: {nxp_orange};
+            color: #FFFFFF;
+            border-radius: 5px;
             font-weight: bold;
-        }
-        headerbar .subtitle {
-            color: #D8DEE9;
-        }
-        button {
-            background-color: #5E81AC;
-            color: #ECEFF4;
+        }}
+        frame {{
+            background-color: {nxp_gray};
+            color: #FFFFFF;
             border-radius: 5px;
-        }
-        frame {
-            background-color: #4C566A;
-            color: #ECEFF4;
-            border-radius: 5px;
-        }
-        label {
-            color: #ECEFF4;
+        }}
+        label {{
+            color: #FFFFFF;
             font-size: 14px;
-        }
+        }}
         """
 
         style_provider = Gtk.CssProvider()
@@ -229,7 +235,7 @@ class VideoPlayer(Gtk.Window):
     def update_frame(self):
         ret, frame = self.capture.read()
         if ret:
-            # Convert the frame from camera to YxZ pixels required by the model (e.g. 224x224), leave display_frame for display and normalize the processed frame   
+            # Convert the frame from camera to YxZ pixels required by the model (e.g. 224x224), leave display_frame for display and normalize the processed frame
             processed_frame, display_frame = self.preprocess_frame(frame)
             if self.inference_enabled:
                 self.run_inference(processed_frame, display_frame)
@@ -294,8 +300,6 @@ class VideoPlayer(Gtk.Window):
         # Store cycle time
         self.cycle_times.append(cycle_time)
 
-        # Draw the predicted class name on the display_frame
-        cv2.putText(display_frame, f"Predicted: {self.predicted_class_name}", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1)
         # Convert display_frame to RGB
         self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
 
