@@ -33,7 +33,7 @@ class VideoPlayer(Gtk.Window):
         self.set_titlebar(header_bar)
 
         # Add NXP Logo to Header Bar
-        logo_path = "../readme_images/2560px-NXP-Logo.svg.png"  # Path to the NXP logo image
+        logo_path = "../readme_images/2560px-NXP-Logo.svg.png"
         if os.path.exists(logo_path):
             logo_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(logo_path, width=150, height=50, preserve_aspect_ratio=True)
             logo_image = Gtk.Image.new_from_pixbuf(logo_pixbuf)
@@ -59,6 +59,8 @@ class VideoPlayer(Gtk.Window):
         self.drawing_area.set_size_request(640, 480)
         self.drawing_area.connect("draw", self.on_draw)
         self.grid.attach(self.drawing_area, 0, 0, 2, 1)
+        # Add CSS class for NXP green border
+        self.drawing_area.get_style_context().add_class("nxp-border")
 
         # Gesture Images Box
         self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -74,15 +76,17 @@ class VideoPlayer(Gtk.Window):
                 self.gestures_box.pack_start(frame, expand=False, fill=False, padding=5)
                 self.gesture_images_widgets[class_name] = image_widget
 
-        # Dynamic Gesture Image
-        self.dynamic_gesture_frame = Gtk.Frame(label="Recognized Gesture")
+        # Dynamic Gesture Image without Label
+        self.dynamic_gesture_frame = Gtk.Frame(label="                ")
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
         self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
         self.dynamic_gesture_image = Gtk.Image()
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
+        # Add CSS class for NXP green border
+        self.dynamic_gesture_frame.get_style_context().add_class("nxp-border")
         self.grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
 
-        # Apply CSS Styling with NXP Colors
+        # Apply CSS Styling with NXP Colors and Borders
         self.apply_css()
 
     def apply_css(self):
@@ -114,6 +118,9 @@ class VideoPlayer(Gtk.Window):
         label {{
             color: #FFFFFF;
             font-size: 14px;
+        }}
+        .nxp-border {{
+            border: 5px solid {nxp_green};
         }}
         """
 
