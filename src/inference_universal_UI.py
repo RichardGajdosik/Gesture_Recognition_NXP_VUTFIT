@@ -19,7 +19,7 @@ class VideoPlayer(Gtk.Window):
         self.set_default_size(1024, 768)
         self.target = target
         self.model_path = model_path
-
+        
         self.load_model()
         self.init_ui()
         self.init_video_capture()
@@ -92,11 +92,11 @@ class VideoPlayer(Gtk.Window):
                 self.gesture_images_widgets[class_name] = image_widget
     
         # Dynamic Gesture Image without Label
-        self.dynamic_gesture_frame = Gtk.Frame(label="                ")
+        self.dynamic_gesture_frame = Gtk.Frame()
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
         self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
         self.dynamic_gesture_image = Gtk.Image()
-        self.dynamic_gesture_image.set_size_request(150, 150)  # Increased size by 50%
+        self.dynamic_gesture_image.set_size_request(145, 145)  # Increased size by 50%
         self.dynamic_gesture_frame.set_size_request(150, 150)   # Increased size by 50%
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
         self.dynamic_gesture_frame.set_hexpand(False)           # Prevent stretching
@@ -125,7 +125,7 @@ class VideoPlayer(Gtk.Window):
         }}
         button {{
             background-color: {nxp_orange};
-            color: #FFFFFF;
+            color: {nxp_green};
             border-radius: 5px;
             font-weight: bold;
         }}
@@ -207,6 +207,8 @@ class VideoPlayer(Gtk.Window):
 
         # Initialize variables for inference
         self.previous_avg_gesture = None
+        self.draw_times = []
+        self.frame_times = []
         self.cycle_times = []
         self.preprocess_times = []
         self.inference_times = []
@@ -234,13 +236,12 @@ class VideoPlayer(Gtk.Window):
         for name in class_names:
             image_path = f'recognized_gestures/{name}.jpg'
             if os.path.exists(image_path):
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(image_path, width=100, height=100, preserve_aspect_ratio=True)
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(image_path, width=140, height=140, preserve_aspect_ratio=True)
                 images[name] = pixbuf
         return images
 
     def preprocess_frame(self, frame):
         # Input shape should be (height, width), for example (224, 224)
-
         target_height, target_width = self.input_shape[:2]
 
         # Determine the minimum dimension of the frame and crop it to a square
@@ -256,9 +257,10 @@ class VideoPlayer(Gtk.Window):
         normalized_frame = resized_frame / 255.0
 
         # Expand dimensions to match the model's input shape and convert to the expected dtype
-        return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), cv2.flip(resized_frame, 1)
+        return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), cv2.flip(frame, 1)
 
     def update_frame(self):
+        frame_start_time = time.time()
         ret, frame = self.capture.read()
         if ret:
             # Convert the frame from camera to YxZ pixels required by the model (e.g. 224x224), leave display_frame for display and normalize the processed frame
@@ -268,6 +270,10 @@ class VideoPlayer(Gtk.Window):
             else:
                 self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             self.drawing_area.queue_draw()
+
+        #  Log metrics
+        frame_processing_time = time.time() - frame_start_time
+        self.frame_times.append(frame_processing_time)
         return True  # Return True to continue callback
 
     def run_inference(self, processed_frame, display_frame):
@@ -330,6 +336,7 @@ class VideoPlayer(Gtk.Window):
         self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
 
     def on_draw(self, widget, cr):
+        draw_start_time = time.time()
         if hasattr(self, 'current_frame'):
             # Get the size of the drawing area
             allocation = self.drawing_area.get_allocation()
@@ -357,6 +364,10 @@ class VideoPlayer(Gtk.Window):
             # Draw the pixbuf at the calculated position
             Gdk.cairo_set_source_pixbuf(cr, pixbuf, x, y)
             cr.paint()
+
+        draw_time = time.time() - draw_start_time
+        self.draw_times.append(draw_time)
+
         return False
 
     def gdk_pixbuf_from_frame(self, frame):
@@ -381,24 +392,28 @@ class VideoPlayer(Gtk.Window):
 
     def log_performance_metrics(self):
         current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        log_filename = f"logs/{self.platform}/{self.target}_{time.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+        log_filename = f"logs/{self.platform}/{self.target}_{current_time}.txt"
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-
+    
         # Calculate averages
         average_cycle_time = sum(self.cycle_times) / len(self.cycle_times) if self.cycle_times else 0
         average_preprocess_time = sum(self.preprocess_times) / len(self.preprocess_times) if self.preprocess_times else 0
         average_inference_time = sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
         average_memory_usage = sum(self.memory_usages) / len(self.memory_usages) if self.memory_usages else 0
         average_accuracy = sum(self.model_accuracies) / len(self.model_accuracies) if self.model_accuracies else 0
-
+        average_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else 0
+        average_draw_time = sum(self.draw_times) / len(self.draw_times) if self.draw_times else 0
+    
         # Write to log
         with open(log_filename, 'w') as log_file:
             log_entry = (
                 f"Time: {current_time}\n"
                 f"The name of the model: {self.model_path}\n"
                 f"Avg. Cycle Time: {average_cycle_time:.8f}s\n"
+                f"Avg. Frame Processing Time: {average_frame_time:.8f}s\n"
                 f"Avg. Preprocess Time: {average_preprocess_time:.8f}s\n"
                 f"Avg. Inference Time: {average_inference_time:.8f}s\n"
+                f"Avg. Draw Time: {average_draw_time:.8f}s\n"
                 f"Avg. Memory Usage: {average_memory_usage} MB\n"
                 f"Avg. Accuracy: {average_accuracy:.2f}%\n"
             )
