@@ -408,13 +408,13 @@ class VideoPlayer(Gtk.Window):
         with open(log_filename, 'w') as log_file:
             log_entry = (
                 f"Time: {current_time}\n"
-                f"On platform:{self.platform} on: {self.target}\n"
+                f"{self.platform} inferencing on: {self.target}\n"
                 f"The name of the model: {self.model_path}\n"
-                # f"Avg. Cycle Time: {average_cycle_time:.8f}s\n"
-                f"Avg. Cycle Time per frame: {average_frame_time:.8f}s\n"
-                f"Avg. Preprocess Frames Time: {average_preprocess_time:.8f}s\n"
-                f"Avg. Inference Time: {average_inference_time:.8f}s\n"
-                f"Avg. Draw Time: {average_draw_time:.8f}s\n"
+                # f"Avg. Cycle Time: {average_cycle_time * 1000:.2f} ms\n"
+                f"Avg. Cycle Time per frame: {average_frame_time * 1000:.2f} ms\n"
+                f"Avg. Preprocess Frames Time: {average_preprocess_time * 1000:.2f} ms\n"
+                f"Avg. Inference Time: {average_inference_time * 1000:.2f} ms\n"
+                f"Avg. Draw Time: {average_draw_time * 1000:.2f} ms\n"
                 f"Avg. Memory Usage: {average_memory_usage} MB\n"
                 f"Avg. Accuracy: {average_accuracy:.2f}%\n"
             )
