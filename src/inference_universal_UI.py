@@ -90,7 +90,7 @@ class VideoPlayer(Gtk.Window):
                 self.gesture_images_widgets[class_name] = image_widget  
 
         # Dynamic Gesture Image without Label
-        self.dynamic_gesture_frame = Gtk.Frame(label="                ")
+        self.dynamic_gesture_frame = Gtk.Frame()
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
         self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
         self.dynamic_gesture_image = Gtk.Image()
