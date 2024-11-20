@@ -241,6 +241,8 @@ class VideoPlayer(Gtk.Window):
         return images
 
     def preprocess_frame(self, frame):
+        start_preprocess_time = time.time()
+
         # Input shape should be (height, width), for example (224, 224)
         target_height, target_width = self.input_shape[:2]
 
@@ -256,6 +258,10 @@ class VideoPlayer(Gtk.Window):
         # Normalize the resized frame (assuming the model expects values between 0 and 1)
         normalized_frame = resized_frame / 255.0
 
+        # Store preprocess time
+        preprocess_time = time.time() - start_preprocess_time
+        self.preprocess_times.append(preprocess_time)
+
         # Expand dimensions to match the model's input shape and convert to the expected dtype
         return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), cv2.flip(frame, 1)
 
@@ -267,31 +273,25 @@ class VideoPlayer(Gtk.Window):
             processed_frame, display_frame = self.preprocess_frame(frame)
             if self.inference_enabled:
                 self.run_inference(processed_frame, display_frame)
+                
+                #  Log metrics
+                frame_processing_time = time.time() - frame_start_time
+                self.frame_times.append(frame_processing_time)
             else:
                 self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             self.drawing_area.queue_draw()
-
-        #  Log metrics
-        frame_processing_time = time.time() - frame_start_time
-        self.frame_times.append(frame_processing_time)
         return True  # Return True to continue callback
 
     def run_inference(self, processed_frame, display_frame):
         start_cycle_time = time.time()
-        start_preprocess_time = time.time()
-
-        preprocess_time = time.time() - start_preprocess_time
-
-        # Store preprocess time
-        self.preprocess_times.append(preprocess_time)
         start_inference_time = time.time()
 
         # Run object detection
         self.interpreter.set_tensor(self.input_details[0]['index'], processed_frame)
         self.interpreter.invoke()
-        inference_time = time.time() - start_inference_time
 
         # Store inference time
+        inference_time = time.time() - start_inference_time
         self.inference_times.append(inference_time)
 
         # Get memory usage using 'free' command
@@ -394,7 +394,7 @@ class VideoPlayer(Gtk.Window):
         current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_filename = f"logs/{self.platform}/{self.target}_{current_time}.txt"
         os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-    
+
         # Calculate averages
         average_cycle_time = sum(self.cycle_times) / len(self.cycle_times) if self.cycle_times else 0
         average_preprocess_time = sum(self.preprocess_times) / len(self.preprocess_times) if self.preprocess_times else 0
@@ -403,15 +403,16 @@ class VideoPlayer(Gtk.Window):
         average_accuracy = sum(self.model_accuracies) / len(self.model_accuracies) if self.model_accuracies else 0
         average_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else 0
         average_draw_time = sum(self.draw_times) / len(self.draw_times) if self.draw_times else 0
-    
+
         # Write to log
         with open(log_filename, 'w') as log_file:
             log_entry = (
                 f"Time: {current_time}\n"
+                f"On platform:{self.platform} on: {self.target}\n"
                 f"The name of the model: {self.model_path}\n"
-                f"Avg. Cycle Time: {average_cycle_time:.8f}s\n"
-                f"Avg. Frame Processing Time: {average_frame_time:.8f}s\n"
-                f"Avg. Preprocess Time: {average_preprocess_time:.8f}s\n"
+                # f"Avg. Cycle Time: {average_cycle_time:.8f}s\n"
+                f"Avg. Cycle Time per frame: {average_frame_time:.8f}s\n"
+                f"Avg. Preprocess Frames Time: {average_preprocess_time:.8f}s\n"
                 f"Avg. Inference Time: {average_inference_time:.8f}s\n"
                 f"Avg. Draw Time: {average_draw_time:.8f}s\n"
                 f"Avg. Memory Usage: {average_memory_usage} MB\n"
