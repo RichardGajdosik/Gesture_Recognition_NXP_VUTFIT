@@ -43,6 +43,7 @@ class VideoPlayer(Gtk.Window):
         # Start/Stop Inference Button in Header Bar
         self.button_inference = Gtk.Button(label="Start Inference")
         self.button_inference.connect("clicked", self.on_inference_clicked)
+        self.button_inference.get_style_context().add_class("inference-button")  # Add custom CSS class
         header_bar.pack_end(self.button_inference)
     
         # Main Layout Grid
@@ -83,12 +84,19 @@ class VideoPlayer(Gtk.Window):
         for class_name in self.class_names:
             if class_name in self.gesture_images:
                 image_widget = Gtk.Image.new_from_pixbuf(self.gesture_images[class_name])
-                image_widget.set_size_request(150, 150)  # Increased size by 50%
+                image_widget.set_size_request(150, 150)
                 frame = Gtk.Frame()
-                frame.set_shadow_type(Gtk.ShadowType.IN)
-                frame.set_size_request(150, 150)          # Increased size by 50%
+                frame.set_shadow_type(Gtk.ShadowType.NONE)
+                frame.set_size_request(150, 150)
                 frame.add(image_widget)
-                self.gestures_box.pack_start(frame, expand=False, fill=False, padding=7)  # Increased padding
+                # Remove any margins
+                frame.set_margin_start(0)
+                frame.set_margin_end(0)
+                frame.set_margin_top(0)
+                frame.set_margin_bottom(0)
+                # Add CSS class to frame for inner border
+                frame.get_style_context().add_class("gesture-frame")
+                self.gestures_box.pack_start(frame, expand=False, fill=False, padding=0)
                 self.gesture_images_widgets[class_name] = image_widget
     
         # Dynamic Gesture Image without Label
@@ -96,7 +104,7 @@ class VideoPlayer(Gtk.Window):
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
         self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
         self.dynamic_gesture_image = Gtk.Image()
-        self.dynamic_gesture_image.set_size_request(145, 145)  # Increased size by 50%
+        self.dynamic_gesture_image.set_size_request(130, 130)  # Increased size by 50%
         self.dynamic_gesture_frame.set_size_request(150, 150)   # Increased size by 50%
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
         self.dynamic_gesture_frame.set_hexpand(False)           # Prevent stretching
@@ -129,17 +137,24 @@ class VideoPlayer(Gtk.Window):
             border-radius: 5px;
             font-weight: bold;
         }}
+        .inference-button {{
+            background-color: #FFD700;  /* Gold color */
+            color: #000000;             /* Black text */
+        }}
         frame {{
-            background-color: {nxp_gray};
+            background-color: {nxp_orange};
             color: #FFFFFF;
             border-radius: 5px;
+        }}
+        .gesture-frame {{
+            border: 1px solid {nxp_orange};
         }}
         label {{
             color: #FFFFFF;
             font-size: 14px;
         }}
         .nxp-border {{
-            border: 5px solid {nxp_green};
+            border: 6px solid {nxp_green};
         }}
         """
 
@@ -262,8 +277,19 @@ class VideoPlayer(Gtk.Window):
         preprocess_time = time.time() - start_preprocess_time
         self.preprocess_times.append(preprocess_time)
 
+        # Draw rectangle on frame to indicate the area used for processing
+        display_frame = cv2.flip(frame, 1)
+
+        # Calculate rectangle coordinates for the flipped frame
+        frame_height, frame_width = frame.shape[:2]
+        rectangle_start_x = frame_width - (start_x + min_dim)
+        rectangle_end_x = frame_width - start_x
+
+        # Draw rectangle on display_frame
+        cv2.rectangle(display_frame, (rectangle_start_x, start_y), (rectangle_end_x, start_y + min_dim), (0, 255, 0), 2)
+
         # Expand dimensions to match the model's input shape and convert to the expected dtype
-        return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), cv2.flip(frame, 1)
+        return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), display_frame
 
     def update_frame(self):
         frame_start_time = time.time()
