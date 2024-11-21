@@ -4,6 +4,8 @@ import os
 import subprocess
 import datetime
 import cv2
+import platform
+import psutil
 from collections import deque
 import argparse
 import gi
@@ -13,13 +15,14 @@ gi.require_version('Gtk', '3.0')
 gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import Gtk, GdkPixbuf, GLib, Gdk, Gio, Pango
 
+
 class VideoPlayer(Gtk.Window):
     def __init__(self, target='CPU', model_path='models/model_float32epoch20_mobilnetv2_100_per_gesture.tflite'):
         super(VideoPlayer, self).__init__()
-        self.set_default_size(1024, 768)
+        self.set_default_size(1280, 800)  # Increased size to accommodate new panels
         self.target = target
         self.model_path = model_path
-        
+
         self.load_model()
         self.init_ui()
         self.init_video_capture()
@@ -31,89 +34,97 @@ class VideoPlayer(Gtk.Window):
         header_bar = Gtk.HeaderBar()
         header_bar.set_show_close_button(True)
         self.set_titlebar(header_bar)
-    
+
         # Add NXP Logo to Header Bar
         logo_path = "../readme_images/2560px-NXP-Logo.svg.png"
         if os.path.exists(logo_path):
             logo_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                logo_path, width=225, height=75, preserve_aspect_ratio=True)  # Increased size by 50%
+                logo_path, width=225, height=75, preserve_aspect_ratio=True)
             logo_image = Gtk.Image.new_from_pixbuf(logo_pixbuf)
             header_bar.pack_start(logo_image)
-    
+
         # Start/Stop Inference Button in Header Bar
         self.button_inference = Gtk.Button(label="Start Inference")
         self.button_inference.connect("clicked", self.on_inference_clicked)
-        self.button_inference.get_style_context().add_class("inference-button")  # Add custom CSS class
+        self.button_inference.get_style_context().add_class("inference-button")
         header_bar.pack_end(self.button_inference)
-    
+
         # Main Layout Grid
-        self.grid = Gtk.Grid()
-        self.grid.set_column_spacing(15)  # Increased spacing by 50%
-        self.grid.set_row_spacing(15)     # Increased spacing by 50%
-        self.grid.set_margin_top(15)      # Increased margins by 50%
-        self.grid.set_margin_bottom(15)
-        self.grid.set_margin_left(15)
-        self.grid.set_margin_right(15)
-        # self.grid.set_column_homogeneous(True)  # Remove homogeneous columns
-        # Do not add the grid directly to the window
-    
-        # Create an alignment container to center the grid
-        alignment = Gtk.Alignment()
-        alignment.set_halign(Gtk.Align.CENTER)
-        alignment.set_valign(Gtk.Align.CENTER)
-        alignment.add(self.grid)
-        self.add(alignment)
-    
+        self.main_grid = Gtk.Grid()
+        self.main_grid.set_column_spacing(10)
+        self.main_grid.set_row_spacing(10)
+        self.main_grid.set_margin_top(10)
+        self.main_grid.set_margin_bottom(10)
+        self.main_grid.set_margin_left(10)
+        self.main_grid.set_margin_right(10)
+
+        # Left Panel for Hardware Information
+        self.hardware_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        self.hardware_info_box.set_halign(Gtk.Align.START)
+        self.hardware_info_box.set_valign(Gtk.Align.START)
+        self.hardware_info_box.get_style_context().add_class("info-box")
+        self.populate_hardware_info()
+        self.main_grid.attach(self.hardware_info_box, 0, 0, 1, 2)
+
+        # Center Grid for Video and Gestures
+        self.center_grid = Gtk.Grid()
+        self.center_grid.set_column_spacing(10)
+        self.center_grid.set_row_spacing(10)
+        self.main_grid.attach(self.center_grid, 1, 0, 1, 2)
+
+        # Right Panel for Log Information
+        self.log_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        self.log_info_box.set_halign(Gtk.Align.END)
+        self.log_info_box.set_valign(Gtk.Align.START)
+        self.log_info_box.get_style_context().add_class("info-box")
+        self.populate_log_info()
+        self.main_grid.attach(self.log_info_box, 2, 0, 1, 2)
+
         # Drawing Area for Video
         self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_size_request(960, 720)  # Increased size by 50%
+        self.drawing_area.set_size_request(960, 720)
         self.drawing_area.connect("draw", self.on_draw)
         self.drawing_area.set_halign(Gtk.Align.CENTER)
         self.drawing_area.set_valign(Gtk.Align.CENTER)
-        self.grid.attach(self.drawing_area, 0, 0, 2, 1)
-        # Add CSS class for NXP green border
         self.drawing_area.get_style_context().add_class("nxp-border")
-    
+        self.center_grid.attach(self.drawing_area, 0, 0, 2, 1)
+
         # Gesture Images Box
-        self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)  # Increased spacing
+        self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
         self.gestures_box.set_halign(Gtk.Align.CENTER)
         self.gestures_box.set_valign(Gtk.Align.CENTER)
-        self.grid.attach(self.gestures_box, 0, 1, 1, 1)
-    
+        self.center_grid.attach(self.gestures_box, 0, 1, 1, 1)
+
         self.gesture_images_widgets = {}
         for class_name in self.class_names:
             if class_name in self.gesture_images:
                 image_widget = Gtk.Image.new_from_pixbuf(self.gesture_images[class_name])
-                image_widget.set_size_request(150, 150)
                 frame = Gtk.Frame()
                 frame.set_shadow_type(Gtk.ShadowType.NONE)
                 frame.set_size_request(150, 150)
+                image_widget.set_size_request(150, 150)
                 frame.add(image_widget)
-                # Remove any margins
-                frame.set_margin_start(0)
-                frame.set_margin_end(0)
-                frame.set_margin_top(0)
-                frame.set_margin_bottom(0)
-                # Add CSS class to frame for inner border
                 frame.get_style_context().add_class("gesture-frame")
                 self.gestures_box.pack_start(frame, expand=False, fill=False, padding=0)
                 self.gesture_images_widgets[class_name] = image_widget
-    
+
         # Dynamic Gesture Image without Label
         self.dynamic_gesture_frame = Gtk.Frame()
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
-        self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.IN)
+        self.dynamic_gesture_frame.set_shadow_type(Gtk.ShadowType.NONE)
         self.dynamic_gesture_image = Gtk.Image()
-        self.dynamic_gesture_image.set_size_request(130, 130)  # Increased size by 50%
-        self.dynamic_gesture_frame.set_size_request(150, 150)   # Increased size by 50%
+        self.dynamic_gesture_image.set_size_request(130, 130)
+        self.dynamic_gesture_frame.set_size_request(150, 150)
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
         self.dynamic_gesture_frame.set_hexpand(False)           # Prevent stretching
         self.dynamic_gesture_frame.set_halign(Gtk.Align.CENTER) # Center alignment
-        # Add CSS class for NXP green border
         self.dynamic_gesture_frame.get_style_context().add_class("nxp-border")
-        self.grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
-    
-        # Apply CSS Styling with NXP Colors and Borders
+        self.center_grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
+
+        # Add the main grid to the window
+        self.add(self.main_grid)
+
+        # Apply CSS Styling
         self.apply_css()
 
     def apply_css(self):
@@ -156,6 +167,11 @@ class VideoPlayer(Gtk.Window):
         .nxp-border {{
             border: 6px solid {nxp_green};
         }}
+        .info-box {{
+            background-color: {nxp_gray};
+            padding: 10px;
+            border-radius: 5px;
+        }}
         """
 
         style_provider = Gtk.CssProvider()
@@ -167,6 +183,73 @@ class VideoPlayer(Gtk.Window):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
+    def populate_hardware_info(self):
+        # Create labels for hardware information
+        self.hardware_labels = {}
+        labels_info = [
+            ('Platform Type', self.platform_type),
+            ('Platform Model', self.platform),
+            ('CPU Model', platform.processor()),
+            ('CPU Cores', str(psutil.cpu_count(logical=True))),
+            ('Total Memory', f"{round(psutil.virtual_memory().total / (1024**3), 2)} GB"),
+            ('Available Memory', f"{round(psutil.virtual_memory().available / (1024**3), 2)} GB"),
+            ('Target Device', self.target)
+        ]
+        for label_text, value in labels_info:
+            label = Gtk.Label()
+            label.set_markup(f"<b>{label_text}:</b> {value}")
+            label.set_xalign(0)
+            self.hardware_info_box.pack_start(label, False, False, 0)
+            self.hardware_labels[label_text] = label
+
+    def populate_log_info(self):
+        # Create labels for log information
+        self.log_labels = {}
+        labels_info = [
+            ('Current Time', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            ('Inference Status', 'Stopped'),
+            ('Average Inference Time', 'N/A'),
+            ('Average FPS', 'N/A'),
+            ('Last Detected Gesture', 'None'),
+            ('Model Accuracy', 'N/A'),
+            ('Memory Usage', 'N/A')
+        ]
+        for label_text, value in labels_info:
+            label = Gtk.Label()
+            label.set_markup(f"<b>{label_text}:</b> {value}")
+            label.set_xalign(0)
+            self.log_info_box.pack_start(label, False, False, 0)
+            self.log_labels[label_text] = label
+
+    def update_log_info(self):
+        # Update dynamic log information
+        self.log_labels['Current Time'].set_markup(
+            f"<b>Current Time:</b> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self.log_labels['Inference Status'].set_markup(
+            f"<b>Inference Status:</b> {'Running' if self.inference_enabled else 'Stopped'}")
+
+        if self.inference_times:
+            avg_inference_time = (sum(self.inference_times) / len(self.inference_times)) * 1000
+            self.log_labels['Average Inference Time'].set_markup(
+                f"<b>Average Inference Time:</b> {avg_inference_time:.2f} ms")
+
+        if self.frame_times:
+            avg_fps = len(self.frame_times) / sum(self.frame_times)
+            self.log_labels['Average FPS'].set_markup(
+                f"<b>Average FPS:</b> {avg_fps:.2f}")
+
+        self.log_labels['Last Detected Gesture'].set_markup(
+            f"<b>Last Detected Gesture:</b> {self.predicted_class_name}")
+
+        if self.model_accuracies:
+            avg_accuracy = sum(self.model_accuracies) / len(self.model_accuracies)
+            self.log_labels['Model Accuracy'].set_markup(
+                f"<b>Model Accuracy:</b> {avg_accuracy:.2f}%")
+
+        current_memory = self.get_memory_usage()
+        self.log_labels['Memory Usage'].set_markup(
+            f"<b>Memory Usage:</b> {current_memory} MB")
+
     def init_video_capture(self):
         self.capture = cv2.VideoCapture(0)
         GLib.timeout_add(60, self.update_frame)  # Timeout in milliseconds to refresh frame
@@ -176,21 +259,21 @@ class VideoPlayer(Gtk.Window):
         delegate = "None"
         if os.path.exists("/usr/lib/libvx_delegate.so"):
             self.platform = "i.MX8MP"
-            platformType = "ARM"
+            self.platform_type = "ARM"
             delegate = "/usr/lib/libvx_delegate.so"
         elif os.path.exists("/usr/lib/libethosu_delegate.so"):
             self.platform = "i.MX93"
-            platformType = "ARM"
+            self.platform_type = "ARM"
             delegate = "/usr/lib/libethosu_delegate.so"
         else:
             self.platform = "PC"
-            platformType = "x86"
+            self.platform_type = "x86"
 
         print("----------------------------------------------------------------------------------------------------------------------------------------")
-        print(f"Running inference with these values: Platform type: {platformType}, platform: {self.platform}, target: {self.target}\n delegate: {delegate}, model path: {self.model_path}")
+        print(f"Running inference with these values: Platform type: {self.platform_type}, platform: {self.platform}, target: {self.target}\n delegate: {delegate}, model path: {self.model_path}")
         print("----------------------------------------------------------------------------------------------------------------------------------------")
 
-        if platformType == 'ARM':
+        if self.platform_type == 'ARM':
             from tflite_runtime.interpreter import Interpreter
             if self.target == 'NPU':
                 from tflite_runtime.interpreter import load_delegate
@@ -201,10 +284,10 @@ class VideoPlayer(Gtk.Window):
             else:
                 print('Error: Passed wrong target type. Please set target type to \'CPU\' or \'NPU\'')
                 exit()
-        elif platformType == 'x86' and self.target == 'NPU':
+        elif self.platform_type == 'x86' and self.target == 'NPU':
             print('Error: Passed wrong target in combination with platform type. Cannot target NPU when on x86 platform type')
             exit()
-        elif platformType == 'x86':
+        elif self.platform_type == 'x86':
             import tensorflow as tf
             self.interpreter = tf.lite.Interpreter(model_path=self.model_path)
         else:
@@ -232,19 +315,14 @@ class VideoPlayer(Gtk.Window):
         self.last_predictions = deque(maxlen=20)
         self.avg_gesture = "Init"
         self.class_names = ['dislike', 'fist', 'like', 'peace', 'stop']
-        self.predicted_class_name = ""
+        self.predicted_class_name = "None"
         self.gesture_images = self.load_recognized_gestures(self.class_names)
 
     def get_memory_usage(self):
-        # Execute 'free' command and capture its output
-        try:
-            mem_usage = subprocess.check_output(['free', '-m']).decode('utf-8').split('\n')
-            # Take the used memory from output
-            used_memory = mem_usage[1].split()[2]
-
-            return int(used_memory)
-        except:
-            return -1
+        # Get current process memory usage in MB
+        process = psutil.Process(os.getpid())
+        mem_info = process.memory_info()
+        return int(mem_info.rss / 1024 / 1024)
 
     def load_recognized_gestures(self, class_names):
         images = {}
@@ -277,10 +355,10 @@ class VideoPlayer(Gtk.Window):
         preprocess_time = time.time() - start_preprocess_time
         self.preprocess_times.append(preprocess_time)
 
-        # Draw rectangle on frame to indicate the area used for processing
+        # Flip the frame for display
         display_frame = cv2.flip(frame, 1)
 
-        # Calculate rectangle coordinates for the flipped frame
+        # Draw rectangle on display_frame to indicate the area used for processing
         frame_height, frame_width = frame.shape[:2]
         rectangle_start_x = frame_width - (start_x + min_dim)
         rectangle_end_x = frame_width - start_x
@@ -299,12 +377,16 @@ class VideoPlayer(Gtk.Window):
             processed_frame, display_frame = self.preprocess_frame(frame)
             if self.inference_enabled:
                 self.run_inference(processed_frame, display_frame)
-                
+
                 #  Log metrics
                 frame_processing_time = time.time() - frame_start_time
                 self.frame_times.append(frame_processing_time)
             else:
                 self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+            # Update the log information
+            self.update_log_info()
+
             self.drawing_area.queue_draw()
         return True  # Return True to continue callback
 
@@ -320,7 +402,7 @@ class VideoPlayer(Gtk.Window):
         inference_time = time.time() - start_inference_time
         self.inference_times.append(inference_time)
 
-        # Get memory usage using 'free' command
+        # Get memory usage
         memory_usage = self.get_memory_usage()
         self.memory_usages.append(memory_usage)
 
@@ -404,7 +486,7 @@ class VideoPlayer(Gtk.Window):
             False,            # No alpha
             8,                # Bits per channel
             w, h,             # Width, height
-            w*c               # Rowstride (number of bytes per row)
+            w * c             # Rowstride (number of bytes per row)
         )
 
     def on_inference_clicked(self, button):
@@ -436,7 +518,6 @@ class VideoPlayer(Gtk.Window):
                 f"Time: {current_time}\n"
                 f"{self.platform} inferencing on: {self.target}\n"
                 f"The name of the model: {self.model_path}\n"
-                # f"Avg. Cycle Time: {average_cycle_time * 1000:.2f} ms\n"
                 f"Avg. Cycle Time per frame: {average_frame_time * 1000:.2f} ms\n"
                 f"Avg. Preprocess Frames Time: {average_preprocess_time * 1000:.2f} ms\n"
                 f"Avg. Inference Time: {average_inference_time * 1000:.2f} ms\n"
@@ -450,6 +531,7 @@ class VideoPlayer(Gtk.Window):
         self.capture.release()
         cv2.destroyAllWindows()
         Gtk.main_quit()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

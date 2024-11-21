@@ -1,7 +1,3 @@
-Uneven gesture images, have to hide it with border that goes not only around the box element but also inside it
-
-preprocess_frame funtion - second returned frame has to have bound boxes of the frame that is inputted into the model, so that we can show HD picture from camera but also let user know which area of the frame is being used for processing so its easier to know where to show gesture for the model
-
-change color of button of inference start
+Make everything align to middle after fullscreening the application
 
 deleted unused metric cycle time
