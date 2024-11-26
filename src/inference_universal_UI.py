@@ -252,6 +252,9 @@ class VideoPlayer(Gtk.Window):
 
     def init_video_capture(self):
         self.capture = cv2.VideoCapture(0)
+        if not self.capture.isOpened():
+            print("Error: Cannot open video capture device.")
+            exit()
         GLib.timeout_add(60, self.update_frame)  # Timeout in milliseconds to refresh frame
 
     def load_model(self):
@@ -334,114 +337,122 @@ class VideoPlayer(Gtk.Window):
         return images
 
     def preprocess_frame(self, frame):
-        start_preprocess_time = time.time()
+        try:
+            start_preprocess_time = time.time()
 
-        # Input shape should be (height, width), for example (224, 224)
-        target_height, target_width = self.input_shape[:2]
+            # Input shape should be (height, width), for example (224, 224)
+            target_height, target_width = self.input_shape[:2]
 
-        # Determine the minimum dimension of the frame and crop it to a square
-        min_dim = min(frame.shape[:2])
-        start_x = (frame.shape[1] - min_dim) // 2
-        start_y = (frame.shape[0] - min_dim) // 2
-        cropped_frame = frame[start_y:start_y+min_dim, start_x:start_x+min_dim]
+            # Determine the minimum dimension of the frame and crop it to a square
+            min_dim = min(frame.shape[:2])
+            start_x = (frame.shape[1] - min_dim) // 2
+            start_y = (frame.shape[0] - min_dim) // 2
+            cropped_frame = frame[start_y:start_y+min_dim, start_x:start_x+min_dim]
 
-        # Resize the cropped frame to the target size expected by the model
-        resized_frame = cv2.resize(cropped_frame, (target_width, target_height))
+            # Resize the cropped frame to the target size expected by the model
+            resized_frame = cv2.resize(cropped_frame, (target_width, target_height))
 
-        # Normalize the resized frame (assuming the model expects values between 0 and 1)
-        normalized_frame = resized_frame / 255.0
+            # Normalize the resized frame (assuming the model expects values between 0 and 1)
+            normalized_frame = resized_frame / 255.0
 
-        # Store preprocess time
-        preprocess_time = time.time() - start_preprocess_time
-        self.preprocess_times.append(preprocess_time)
+            # Store preprocess time
+            preprocess_time = time.time() - start_preprocess_time
+            self.preprocess_times.append(preprocess_time)
 
-        # Flip the frame for display
-        display_frame = cv2.flip(frame, 1)
+            # Flip the frame for display
+            display_frame = cv2.flip(frame, 1)
 
-        # Draw rectangle on display_frame to indicate the area used for processing
-        frame_height, frame_width = frame.shape[:2]
-        rectangle_start_x = frame_width - (start_x + min_dim)
-        rectangle_end_x = frame_width - start_x
+            # Draw rectangle on display_frame to indicate the area used for processing
+            frame_height, frame_width = frame.shape[:2]
+            rectangle_start_x = frame_width - (start_x + min_dim)
+            rectangle_end_x = frame_width - start_x
 
-        # Draw rectangle on display_frame
-        cv2.rectangle(display_frame, (rectangle_start_x, start_y), (rectangle_end_x, start_y + min_dim), (0, 255, 0), 2)
+            # Draw rectangle on display_frame
+            cv2.rectangle(display_frame, (rectangle_start_x, start_y), (rectangle_end_x, start_y + min_dim), (0, 255, 0), 2)
 
-        # Expand dimensions to match the model's input shape and convert to the expected dtype
-        return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), display_frame
+            # Expand dimensions to match the model's input shape and convert to the expected dtype
+            return np.expand_dims(normalized_frame, axis=0).astype(self.input_dtype), display_frame
+        except Exception as e:
+            print(f"Exception in preprocess_frame: {e}")
+            return None, frame  # Return the original frame for display
 
     def update_frame(self):
-        frame_start_time = time.time()
-        ret, frame = self.capture.read()
-        if ret:
-            # Convert the frame from camera to YxZ pixels required by the model (e.g. 224x224), leave display_frame for display and normalize the processed frame
-            processed_frame, display_frame = self.preprocess_frame(frame)
-            if self.inference_enabled:
-                self.run_inference(processed_frame, display_frame)
-
-                #  Log metrics
-                frame_processing_time = time.time() - frame_start_time
-                self.frame_times.append(frame_processing_time)
+        try:
+            frame_start_time = time.time()
+            ret, frame = self.capture.read()
+            if ret:
+                processed_frame, display_frame = self.preprocess_frame(frame)
+                if self.inference_enabled:
+                    self.run_inference(processed_frame, display_frame)
+                    frame_processing_time = time.time() - frame_start_time
+                    self.frame_times.append(frame_processing_time)
+                else:
+                    self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                # Update the log information
+                self.update_log_info()
+                # Request the drawing area to be updated
+                self.drawing_area.queue_draw()
             else:
-                self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-
-            # Update the log information
-            self.update_log_info()
-
-            self.drawing_area.queue_draw()
-        return True  # Return True to continue callback
+                print("Warning: Failed to read frame from camera.")
+        except Exception as e:
+            print(f"Exception in update_frame: {e}")
+        return True  # Return True to continue calling this method
 
     def run_inference(self, processed_frame, display_frame):
-        start_cycle_time = time.time()
-        start_inference_time = time.time()
+        try:
+            start_cycle_time = time.time()
+            start_inference_time = time.time()
 
-        # Run object detection
-        self.interpreter.set_tensor(self.input_details[0]['index'], processed_frame)
-        self.interpreter.invoke()
+            # Run object detection
+            self.interpreter.set_tensor(self.input_details[0]['index'], processed_frame)
+            self.interpreter.invoke()
 
-        # Store inference time
-        inference_time = time.time() - start_inference_time
-        self.inference_times.append(inference_time)
+            # Store inference time
+            inference_time = time.time() - start_inference_time
+            self.inference_times.append(inference_time)
 
-        # Get memory usage
-        memory_usage = self.get_memory_usage()
-        self.memory_usages.append(memory_usage)
+            # Get memory usage
+            memory_usage = self.get_memory_usage()
+            self.memory_usages.append(memory_usage)
 
-        # Get predicted gestures and their percentages of certainty
-        predictions = self.interpreter.get_tensor(self.output_details[0]['index'])
+            # Get predicted gestures and their percentages of certainty
+            predictions = self.interpreter.get_tensor(self.output_details[0]['index'])
 
-        # Get the index and the name of the gesture with highest percentage of certainty
-        predicted_class_index = np.argmax(predictions[0])
-        self.predicted_class_name = self.class_names[predicted_class_index]
+            # Get the index and the name of the gesture with highest percentage of certainty
+            predicted_class_index = np.argmax(predictions[0])
+            self.predicted_class_name = self.class_names[predicted_class_index]
 
-        # Populate our queue
-        self.last_predictions.append(self.predicted_class_name)
+            # Populate our queue
+            self.last_predictions.append(self.predicted_class_name)
 
-        # Normalize float numbers to percentages
-        probabilities = predictions[0] * 100
+            # Normalize float numbers to percentages
+            probabilities = predictions[0] * 100
 
-        # New avg found
-        if len(self.last_predictions) == self.last_predictions.maxlen:
-            self.avg_gesture = max(set(self.last_predictions), key=self.last_predictions.count)
-            self.model_accuracies.append(probabilities[predicted_class_index])
+            # New avg found
+            if len(self.last_predictions) == self.last_predictions.maxlen:
+                self.avg_gesture = max(set(self.last_predictions), key=self.last_predictions.count)
+                self.model_accuracies.append(probabilities[predicted_class_index])
 
-            # Check if the average gesture has changed
-            if self.avg_gesture != self.previous_avg_gesture:
-                self.previous_avg_gesture = self.avg_gesture
+                # Check if the average gesture has changed
+                if self.avg_gesture != self.previous_avg_gesture:
+                    self.previous_avg_gesture = self.avg_gesture
 
-                # Update GUI elements
-                # Update dynamic gesture image
-                if self.avg_gesture in self.gesture_images:
-                    GLib.idle_add(self.dynamic_gesture_image.set_from_pixbuf, self.gesture_images[self.avg_gesture])
-                else:
-                    # If gesture image is not available, clear the dynamic gesture image
-                    GLib.idle_add(self.dynamic_gesture_image.clear)
+                    # Update GUI elements
+                    # Update dynamic gesture image
+                    if self.avg_gesture in self.gesture_images:
+                        GLib.idle_add(self.dynamic_gesture_image.set_from_pixbuf, self.gesture_images[self.avg_gesture])
+                    else:
+                        # If gesture image is not available, clear the dynamic gesture image
+                        GLib.idle_add(self.dynamic_gesture_image.clear)
 
-        cycle_time = time.time() - start_cycle_time
-        # Store cycle time
-        self.cycle_times.append(cycle_time)
+            cycle_time = time.time() - start_cycle_time
+            # Store cycle time
+            self.cycle_times.append(cycle_time)
 
-        # Convert display_frame to RGB
-        self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+            # Convert display_frame to RGB
+            self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+        except Exception as e:
+            print(f"Exception in run_inference: {e}")
 
     def on_draw(self, widget, cr):
         draw_start_time = time.time()
