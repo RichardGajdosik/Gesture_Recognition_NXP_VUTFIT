@@ -39,7 +39,7 @@ class VideoPlayer(Gtk.Window):
         self.set_titlebar(header_bar)
 
         # Add NXP Logo to Header Bar
-        logo_path = "../readme_images/2560px-NXP-Logo.svg.png"
+        logo_path = "../readme_images/nxp-logo.png"
         if os.path.exists(logo_path):
             logo_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
                 logo_path, width=225, height=75, preserve_aspect_ratio=True)
