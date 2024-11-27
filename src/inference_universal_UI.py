@@ -6,6 +6,8 @@ import datetime
 import cv2
 import platform
 import psutil
+import threading
+import queue
 from collections import deque
 import argparse
 import gi
@@ -18,6 +20,7 @@ from gi.repository import Gtk, GdkPixbuf, GLib, Gdk, Gio, Pango
 
 class VideoPlayer(Gtk.Window):
     def __init__(self, target='CPU', model_path='models/model_float32epoch20_mobilnetv2_100_per_gesture.tflite'):
+        self.inference_enabled = False
         super(VideoPlayer, self).__init__()
         self.set_default_size(1280, 800)  # Increased size to accommodate new panels
         self.target = target
@@ -27,14 +30,14 @@ class VideoPlayer(Gtk.Window):
         self.init_ui()
         self.init_video_capture()
         self.show_all()
-        self.inference_enabled = False
+        
 
     def init_ui(self):
         # Create a Header Bar
         header_bar = Gtk.HeaderBar()
         header_bar.set_show_close_button(True)
         self.set_titlebar(header_bar)
-    
+
         # Add NXP Logo to Header Bar
         logo_path = "../readme_images/2560px-NXP-Logo.svg.png"
         if os.path.exists(logo_path):
@@ -42,13 +45,13 @@ class VideoPlayer(Gtk.Window):
                 logo_path, width=225, height=75, preserve_aspect_ratio=True)
             logo_image = Gtk.Image.new_from_pixbuf(logo_pixbuf)
             header_bar.pack_start(logo_image)
-    
+
         # Start/Stop Inference Button in Header Bar
         self.button_inference = Gtk.Button(label="Start Inference")
         self.button_inference.connect("clicked", self.on_inference_clicked)
         self.button_inference.get_style_context().add_class("inference-button")
         header_bar.pack_end(self.button_inference)
-    
+
         # Main Layout Grid
         self.main_grid = Gtk.Grid()
         self.main_grid.set_column_spacing(10)
@@ -59,7 +62,7 @@ class VideoPlayer(Gtk.Window):
         self.main_grid.set_margin_right(10)
         self.main_grid.set_hexpand(True)
         self.main_grid.set_vexpand(True)
-    
+
         # Left Panel for Hardware Information
         self.hardware_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.hardware_info_box.set_halign(Gtk.Align.FILL)
@@ -69,7 +72,7 @@ class VideoPlayer(Gtk.Window):
         self.hardware_info_box.set_vexpand(True)
         self.populate_hardware_info()
         self.main_grid.attach(self.hardware_info_box, 0, 0, 1, 2)
-    
+
         # Center Grid for Video and Gestures
         self.center_grid = Gtk.Grid()
         self.center_grid.set_column_spacing(10)
@@ -79,7 +82,7 @@ class VideoPlayer(Gtk.Window):
         self.center_grid.set_halign(Gtk.Align.CENTER)
         self.center_grid.set_valign(Gtk.Align.CENTER)
         self.main_grid.attach(self.center_grid, 1, 0, 1, 2)
-    
+
         # Right Panel for Log Information
         self.log_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         self.log_info_box.set_halign(Gtk.Align.FILL)
@@ -89,7 +92,7 @@ class VideoPlayer(Gtk.Window):
         self.log_info_box.set_vexpand(True)
         self.populate_log_info()
         self.main_grid.attach(self.log_info_box, 2, 0, 1, 2)
-    
+
         # Drawing Area for Video
         self.drawing_area = Gtk.DrawingArea()
         self.drawing_area.set_size_request(960, 720)
@@ -100,7 +103,7 @@ class VideoPlayer(Gtk.Window):
         self.drawing_area.set_vexpand(True)
         self.drawing_area.get_style_context().add_class("nxp-border")
         self.center_grid.attach(self.drawing_area, 0, 0, 2, 1)
-    
+
         # Gesture Images Box
         self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
         self.gestures_box.set_halign(Gtk.Align.CENTER)
@@ -108,7 +111,7 @@ class VideoPlayer(Gtk.Window):
         self.gestures_box.set_hexpand(True)
         self.gestures_box.set_vexpand(False)
         self.center_grid.attach(self.gestures_box, 0, 1, 1, 1)
-    
+
         self.gesture_images_widgets = {}
         for class_name in self.class_names:
             if class_name in self.gesture_images:
@@ -121,7 +124,7 @@ class VideoPlayer(Gtk.Window):
                 frame.get_style_context().add_class("gesture-frame")
                 self.gestures_box.pack_start(frame, expand=True, fill=True, padding=0)
                 self.gesture_images_widgets[class_name] = image_widget
-    
+
         # Dynamic Gesture Image without Label
         self.dynamic_gesture_frame = Gtk.Frame()
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
@@ -135,10 +138,10 @@ class VideoPlayer(Gtk.Window):
         self.dynamic_gesture_frame.set_halign(Gtk.Align.CENTER)
         self.dynamic_gesture_frame.get_style_context().add_class("nxp-border")
         self.center_grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
-    
+
         # Add the main grid to the window
         self.add(self.main_grid)
-    
+
         # Apply CSS Styling
         self.apply_css()
 
@@ -270,7 +273,18 @@ class VideoPlayer(Gtk.Window):
         if not self.capture.isOpened():
             print("Error: Cannot open video capture device.")
             exit()
-        GLib.timeout_add(180, self.update_frame)  # Timeout in milliseconds to refresh frame
+
+        # Create a queue to communicate with the worker thread
+        self.frame_queue = queue.Queue()
+
+        # Start the worker thread for frame capture and processing
+        self.stop_event = threading.Event()
+        self.worker_thread = threading.Thread(target=self.frame_worker)
+        self.worker_thread.daemon = True
+        self.worker_thread.start()
+
+        # Schedule the UI update method
+        GLib.timeout_add(30, self.update_ui)  # Refresh UI every 30 ms
 
     def load_model(self):
         # Load the tflite model and libraries
@@ -391,27 +405,38 @@ class VideoPlayer(Gtk.Window):
             print(f"Exception in preprocess_frame: {e}")
             return None, frame  # Return the original frame for display
 
-    def update_frame(self):
+    def update_ui(self):
         try:
-            frame_start_time = time.time()
-            ret, frame = self.capture.read()
-            if ret:
-                processed_frame, display_frame = self.preprocess_frame(frame)
-                if self.inference_enabled:
-                    self.run_inference(processed_frame, display_frame)
-                    frame_processing_time = time.time() - frame_start_time
-                    self.frame_times.append(frame_processing_time)
-                else:
-                    self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+            if not self.frame_queue.empty():
+                self.current_frame = self.frame_queue.get_nowait()
+                print("Frame retrieved from queue")
+                # Update the drawing area
+                self.drawing_area.queue_draw()
                 # Update the log information
                 self.update_log_info()
-                # Request the drawing area to be updated
-                self.drawing_area.queue_draw()
+        except Exception as e:
+            print(f"Exception in update_ui: {e}")
+        return True  # Continue calling this method
+    
+    def frame_worker(self):
+        print("Worker thread started")
+        while not self.stop_event.is_set():
+            ret, frame = self.capture.read()
+            if ret:
+                print("Frame captured")
+                if self.inference_enabled:
+                    processed_frame, display_frame = self.preprocess_frame(frame)
+                    self.run_inference(processed_frame, display_frame)
+                else:
+                    display_frame = cv2.flip(frame, 1)
+                    self.current_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                # Put the current frame in the queue
+                if not self.frame_queue.full():
+                    self.frame_queue.put(self.current_frame)
+                    print("Frame put into queue")
             else:
                 print("Warning: Failed to read frame from camera.")
-        except Exception as e:
-            print(f"Exception in update_frame: {e}")
-        return True  # Return True to continue calling this method
 
     def run_inference(self, processed_frame, display_frame):
         try:
@@ -554,6 +579,8 @@ class VideoPlayer(Gtk.Window):
             log_file.write(log_entry)
 
     def on_close(self, *args):
+        self.stop_event.set()
+        self.worker_thread.join()
         self.capture.release()
         cv2.destroyAllWindows()
         Gtk.main_quit()
