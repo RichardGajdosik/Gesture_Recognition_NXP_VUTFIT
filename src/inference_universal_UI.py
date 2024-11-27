@@ -255,7 +255,7 @@ class VideoPlayer(Gtk.Window):
         if not self.capture.isOpened():
             print("Error: Cannot open video capture device.")
             exit()
-        GLib.timeout_add(60, self.update_frame)  # Timeout in milliseconds to refresh frame
+        GLib.timeout_add(180, self.update_frame)  # Timeout in milliseconds to refresh frame
 
     def load_model(self):
         # Load the tflite model and libraries
