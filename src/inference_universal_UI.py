@@ -34,7 +34,7 @@ class VideoPlayer(Gtk.Window):
         header_bar = Gtk.HeaderBar()
         header_bar.set_show_close_button(True)
         self.set_titlebar(header_bar)
-
+    
         # Add NXP Logo to Header Bar
         logo_path = "../readme_images/2560px-NXP-Logo.svg.png"
         if os.path.exists(logo_path):
@@ -42,13 +42,13 @@ class VideoPlayer(Gtk.Window):
                 logo_path, width=225, height=75, preserve_aspect_ratio=True)
             logo_image = Gtk.Image.new_from_pixbuf(logo_pixbuf)
             header_bar.pack_start(logo_image)
-
+    
         # Start/Stop Inference Button in Header Bar
         self.button_inference = Gtk.Button(label="Start Inference")
         self.button_inference.connect("clicked", self.on_inference_clicked)
         self.button_inference.get_style_context().add_class("inference-button")
         header_bar.pack_end(self.button_inference)
-
+    
         # Main Layout Grid
         self.main_grid = Gtk.Grid()
         self.main_grid.set_column_spacing(10)
@@ -57,44 +57,58 @@ class VideoPlayer(Gtk.Window):
         self.main_grid.set_margin_bottom(10)
         self.main_grid.set_margin_left(10)
         self.main_grid.set_margin_right(10)
-
+        self.main_grid.set_hexpand(True)
+        self.main_grid.set_vexpand(True)
+    
         # Left Panel for Hardware Information
         self.hardware_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        self.hardware_info_box.set_halign(Gtk.Align.START)
+        self.hardware_info_box.set_halign(Gtk.Align.FILL)
         self.hardware_info_box.set_valign(Gtk.Align.START)
         self.hardware_info_box.get_style_context().add_class("info-box")
+        self.hardware_info_box.set_hexpand(False)
+        self.hardware_info_box.set_vexpand(True)
         self.populate_hardware_info()
         self.main_grid.attach(self.hardware_info_box, 0, 0, 1, 2)
-
+    
         # Center Grid for Video and Gestures
         self.center_grid = Gtk.Grid()
         self.center_grid.set_column_spacing(10)
         self.center_grid.set_row_spacing(10)
+        self.center_grid.set_hexpand(True)
+        self.center_grid.set_vexpand(True)
+        self.center_grid.set_halign(Gtk.Align.CENTER)
+        self.center_grid.set_valign(Gtk.Align.CENTER)
         self.main_grid.attach(self.center_grid, 1, 0, 1, 2)
-
+    
         # Right Panel for Log Information
         self.log_info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        self.log_info_box.set_halign(Gtk.Align.END)
+        self.log_info_box.set_halign(Gtk.Align.FILL)
         self.log_info_box.set_valign(Gtk.Align.START)
         self.log_info_box.get_style_context().add_class("info-box")
+        self.log_info_box.set_hexpand(False)
+        self.log_info_box.set_vexpand(True)
         self.populate_log_info()
         self.main_grid.attach(self.log_info_box, 2, 0, 1, 2)
-
+    
         # Drawing Area for Video
         self.drawing_area = Gtk.DrawingArea()
         self.drawing_area.set_size_request(960, 720)
         self.drawing_area.connect("draw", self.on_draw)
         self.drawing_area.set_halign(Gtk.Align.CENTER)
         self.drawing_area.set_valign(Gtk.Align.CENTER)
+        self.drawing_area.set_hexpand(True)
+        self.drawing_area.set_vexpand(True)
         self.drawing_area.get_style_context().add_class("nxp-border")
         self.center_grid.attach(self.drawing_area, 0, 0, 2, 1)
-
+    
         # Gesture Images Box
         self.gestures_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
         self.gestures_box.set_halign(Gtk.Align.CENTER)
         self.gestures_box.set_valign(Gtk.Align.CENTER)
+        self.gestures_box.set_hexpand(True)
+        self.gestures_box.set_vexpand(False)
         self.center_grid.attach(self.gestures_box, 0, 1, 1, 1)
-
+    
         self.gesture_images_widgets = {}
         for class_name in self.class_names:
             if class_name in self.gesture_images:
@@ -105,9 +119,9 @@ class VideoPlayer(Gtk.Window):
                 image_widget.set_size_request(150, 150)
                 frame.add(image_widget)
                 frame.get_style_context().add_class("gesture-frame")
-                self.gestures_box.pack_start(frame, expand=False, fill=False, padding=0)
+                self.gestures_box.pack_start(frame, expand=True, fill=True, padding=0)
                 self.gesture_images_widgets[class_name] = image_widget
-
+    
         # Dynamic Gesture Image without Label
         self.dynamic_gesture_frame = Gtk.Frame()
         self.dynamic_gesture_frame.set_label_align(0.5, 0.5)
@@ -116,14 +130,15 @@ class VideoPlayer(Gtk.Window):
         self.dynamic_gesture_image.set_size_request(130, 130)
         self.dynamic_gesture_frame.set_size_request(150, 150)
         self.dynamic_gesture_frame.add(self.dynamic_gesture_image)
-        self.dynamic_gesture_frame.set_hexpand(False)           # Prevent stretching
-        self.dynamic_gesture_frame.set_halign(Gtk.Align.CENTER) # Center alignment
+        self.dynamic_gesture_frame.set_hexpand(True)
+        self.dynamic_gesture_frame.set_vexpand(False)
+        self.dynamic_gesture_frame.set_halign(Gtk.Align.CENTER)
         self.dynamic_gesture_frame.get_style_context().add_class("nxp-border")
         self.center_grid.attach(self.dynamic_gesture_frame, 1, 1, 1, 1)
-
+    
         # Add the main grid to the window
         self.add(self.main_grid)
-
+    
         # Apply CSS Styling
         self.apply_css()
 
