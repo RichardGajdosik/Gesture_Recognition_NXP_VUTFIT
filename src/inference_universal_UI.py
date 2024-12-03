@@ -416,7 +416,7 @@ class VideoPlayer(Gtk.Window):
                 self.update_log_info()
         except Exception as e:
             print(f"Exception in update_ui: {e}")
-        return True  # Continue calling this method
+        return True
     
     def frame_worker(self):
         print("Worker thread started")

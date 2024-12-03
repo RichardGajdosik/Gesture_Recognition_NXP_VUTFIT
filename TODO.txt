@@ -1,3 +1,0 @@
-Make everything align to middle after fullscreening the application
-
-deleted unused metric cycle time
