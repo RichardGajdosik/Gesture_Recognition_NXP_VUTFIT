@@ -22,7 +22,7 @@ class VideoPlayer(Gtk.Window):
     def __init__(self, target='CPU', model_path='models/model_float32epoch20_mobilnetv2_100_per_gesture.tflite'):
         self.inference_enabled = False
         super(VideoPlayer, self).__init__()
-        self.set_default_size(1280, 800)  # Increased size to accommodate new panels
+        self.set_default_size(1280, 800)
         self.target = target
         self.model_path = model_path
 
@@ -546,7 +546,7 @@ class VideoPlayer(Gtk.Window):
             button.set_label("Stop Inference")
         else:
             button.set_label("Start Inference")
-            # Optionally, log performance metrics
+            # Log performance metrics
             self.log_performance_metrics()
 
     def log_performance_metrics(self):
