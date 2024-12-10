@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 import os
 import subprocess
 import time

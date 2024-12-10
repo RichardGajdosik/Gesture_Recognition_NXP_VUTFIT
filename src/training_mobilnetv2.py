@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 import tensorflow as tf
 import os
 from tensorflow.keras import layers, models

@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 import cv2
 import numpy as np
 

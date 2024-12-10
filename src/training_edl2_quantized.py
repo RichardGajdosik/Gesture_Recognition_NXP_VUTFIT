@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 #import numpy as np
 import os
 from tflite_model_maker.config import QuantizationConfig

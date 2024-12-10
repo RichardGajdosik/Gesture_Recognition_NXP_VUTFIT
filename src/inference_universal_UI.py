@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 import numpy as np
 import time
 import os

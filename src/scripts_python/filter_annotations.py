@@ -1,3 +1,6 @@
+#
+# Copyright 2024 NXP
+#
 import json
 import os
 
